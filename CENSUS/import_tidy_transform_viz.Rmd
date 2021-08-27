@@ -1,0 +1,395 @@
+---
+title: "Introduction to Public Health Data Science Using R"
+author: "LB"
+date: "2021/03/06"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Welcome to the Tidyverse
+```{r tv}
+ # install.packages("tidyverse", dependencies = TRUE)
+```
+
+It's a big one but this one set of packages is all we will need for the entirety of this workshop! :)
+
+### {dplyr}
+
+dplyr is a grammar of data manipulation, providing a consistent set of verbs that help you solve the most common data manipulation challenges.
+
+#### 1. `filter()`
+
+`filter()` does exactly what it sounds like. It filters your data down to only the *observations* you want to **keep**.
+```{r filter, message=FALSE, warning=FALSE}
+#load the dplyr package
+library("tidyverse")
+#load the data into the global environment
+data("mpg")
+#`?mpg`
+
+#filter(dataObject, variableConditions) 
+filter(mpg, hwy >= 30)
+```
+
+Remember the `<-` operator. It would be a lot more helpful to store our new data so that we can use it later.
+
+```{r filter2}
+goodMPG <- filter(mpg, hwy >= 30)
+
+```
+
+Now *YOU* try it. Explore the `mpg` dataset and filter on a variable.. or two if you want to get fancy ;)
+
+```{r filter_you, eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+myData <- filter(mpg, [ADD YOUR CONDITION(S) HERE])
+#if you do want to filter on more than one condition, just separate by a comma. Commas are treated as AND.
+```
+
+#### 2. `select()`
+
+`select()` keeps all your observation but subsets the data down to only the *variables* you want to keep.
+
+Remeber the `%>%` operator? Let's say I want to keep the only the cars that get more than 20 MPG but I also don't want to create a new dataframe when I reduce it to only the variables I need? This is where the pipe comes in. It allows me to pass the results of one step into another function! It makes your code look more *elegant* and saves on *memory*!
+
+```{r select}
+goodMPG <- filter(mpg, hwy >= 30) %>% 
+  #feel free to replace these variable with your own set!
+  select(hwy, displ, year, cyl, cty, class) #tip: type ?mpg in the console to see more information on the dataset
+```
+
+#### 3. `mutate()`
+
+`mutate()` might be one of the most commonly used functions. This is the function that lets you create new variables!
+
+Lets create the combined gas mileage. A simple Google search told me that "Combined fuel economy is a weighted average of City and Highway MPG values that is calculated by weighting the City value by 55% and the Highway value by 45%". 
+
+```{r mutate}
+goodMPG <- filter(mpg, hwy >= 30) %>% 
+  select(class, displ, year, cyl, cty, hwy) %>% 
+  #remember to give your variables meaningful names that are short and consice
+  mutate(combined_mpg = round((.55*cty)+(.45*hwy)))
+```
+
+#### 4. `arrange()`
+
+`arrange()` arranges :) It orders the rows of a data frame by the values of selected columns.
+
+```{r arrange}
+goodMPG <- filter(mpg, hwy >= 30) %>% 
+  select(class, displ, year, cyl, cty, hwy) %>% 
+  mutate(combined_mpg = round((.55*cty)+(.45*hwy))) %>% 
+  #use the desc() to order in descending order, feel free to arrange in ascending!
+  arrange(desc(combined_mpg))
+```
+
+#### 5. `summarise()`
+
+`summarise()` is very fun function. It allows you to summarize your data based on some (or none) grouping variables. However, be mindful that summarize returns a different dataframe than the input. It will have one (or more) rows for each combination of grouping variables; if there are no grouping variables, the output will have a single row summarizing all observations in the input.
+
+We will discuss how to implement grouping in a later step. 
+
+```{r summarise}
+# I want to save this as a separate object since I will likely need my tidy data later
+
+averageMPG <- filter(mpg, hwy >= 30) %>% 
+  select(class, displ, year, cyl, cty, hwy) %>% 
+  mutate(combined_mpg = round((.55*cty)+(.45*hwy))) %>% 
+  arrange(desc(combined_mpg)) %>% 
+  #take the average combined mpg of all cars that get >= 30 MPG
+  summarise(avg_combined = mean(combined_mpg))
+
+averageMPG <- goodMPG %>% 
+  summarise(avg_combined = mean(combined_mpg))
+```
+
+*Q1:Run the above code chunk. What does this step return? Why?*
+
+## Let's Plot!
+
+One of the most powerful functions in the tidyverse is `ggplot2`. You can create beautiful plots with just one package! 
+A few notes about `ggplot()`  
+- `ggplot()` is designed to work with data frames as the data source, not individual vectors.  
+- Internal syntax that is different from the tidyverse.  
+- You can add as many layers to a plot. Here is a typical template:
+
+```{r ggplot, eval=FALSE}
+ggplot(data = <DATA>) + 
+  <GEOM_FUNCTION>(mapping = aes(<MAPPINGS>))
+```
+
+Now let's try it.
+
+```{r bar_plot, echo=FALSE}
+#load the library
+library(ggplot2)
+
+#Geoms are added to your plot using `+` sign BUT you can pipe into ggplot.
+## let's start with a simple bar plot looking at difference in cylinders
+goodMPG %>% 
+  ggplot(aes(x = class)) +
+  geom_bar()
+
+#now let's look at the difference between cyl and mpg
+goodMPG %>% 
+  ggplot(aes(x = class, y = combined_mpg)) +
+  geom_col()
+```
+
+*Q2: What is happening in this second plot? Take a minute to think about why this plot is not what you would expect? (hint: try typing `?geom_col` and `?geom_bar` in the console to understand the differences between these two functions)*
+
+```{r scatter}
+goodMPG %>% 
+  ggplot(mapping = aes(x= year, y= combined_mpg)) +
+  #add some flavor!
+  geom_point(colour = "hotpink") +
+  #add a theme
+  theme_minimal() +
+  #adjust the labels
+  labs(y = "Combined MPG", x = "Year")
+```
+```{r dens_plot}
+#it's useful to see a continuous variable broken down by a categorical. This is useful to observe any time covariation. We can do this through a desnity plot
+
+#let's look at the combined mpg over time by class of car
+goodMPG %>% 
+  #by setting y to be the density (instead of count-- the default), the count is standardised so      # that the area under each frequency polygon is one
+  ggplot(mapping = aes(x= combined_mpg, y= ..density..)) +
+  #add some flavor!
+  geom_freqpoly(mapping = aes(colour = class)) +
+  theme_minimal() +
+  labs(x = "Combined MPG", y = "Density")
+#this does not look so informative. thankfully, r tells us that maybe the width of bins is not a good fit for our data. let's change it.
+
+goodMPG %>% 
+  ggplot(data = goodMPG, mapping = aes(x= combined_mpg, y= ..density..)) +
+  geom_freqpoly(mapping = aes(colour = class), binwidth = 2) +
+  theme_minimal() +
+  labs(x = "Combined MPG", y = "Density")
+```
+
+*Q2.1: Play around with the values of binwidth. What can we determine from this graph?*
+
+___
+## Our Data! 
+
+Now that we've got some basics of R and the Tidyverse covered. Let's actually work with some real health data and apply these principals as data scientists do!
+
+### 1. Import
+```{r import, message=FALSE, warning=FALSE}
+# install.packages("tidycensus")
+library(tidycensus)
+
+# store your ACTIVATED API key into R
+# census_api_key("YOUR API KEY GOES HERE")
+
+# look at the package website to get a list of supported geographies
+snap <- get_acs(geography = "tract",
+                #from looking at data.census.gov and doing a search for "food stamp" we can obtain the table number
+                table = "S2201",
+                #explicitly specify the year - this function defaults to the latest 5-year estimate available
+                year = 2019, 
+                #state accepts a character or FIPS code for the state. the functions will auto-convert fl into 12 for the API call
+                state = "FL", 
+                #the fips code for Miami-Dade County
+                county = 86)
+
+str(snap)
+```
+
+*Q3: What do you think `str()` does? What are our variable classes? What is our N? How many unique tracts are there in MDC?*
+```{r}
+unique(snap$GEOID) %>% length()
+```
+
+### 2. Tidy
+
+*Q4: Given what we know about the principals of tidy data, is our data tidy?*
+
+Here are some steps to help us figure it out:  
+1. The first step is always to figure out what the variables and observations are  
+2. Resolve one of two common problems:
+  1. One variable might be spread across multiple columns.  
+  2. One observation might be scattered across multiple rows.
+
+### 3. Transform/EDA
+
+It is important to learn your data first. You don't necessarily need to already have the research question ready. However, for the purposes of this workshop, we know we want to examine the relationship between people's median income and the number of food stamps across the tracts in MDC
+
+Let's look at our data, we have over 118k records. There is a lot of information that is not relevant to proving or disproving our hypothesis. Also, our variable names are not human-readable!
+
+```{r get_vars}
+#thankfully there is a function that will help us out
+## our table is a what's called a "subject" table - you can read more on the types of 
+## census tables here: https://www.census.gov/acs/www/data/data-tables-and-tools/
+v19 <- tidycensus::load_variables(year = 2019,
+                                  dataset = "acs5/subject")
+
+#if we look at the data, we can see there is a variable called "name" 
+## let's filter the variable list to only include the variables in our specific table
+## to do so, we will have to use a little string detection
+
+v19_snap <- v19 %>% 
+  #str_detect() is a function from the {stringr} package. 
+  #This function returns a logical(T/F) if the pattern is detected in the string
+  filter(str_detect(name, "S2201"))
+
+#this is much more manageable!
+```
+
+Let's look at the resulting data frame for a variable that tells us the proportion of people on food stamps  
+Let's use the RStudio GUI this time. By filtering the `v19_snap` "label" variable for "food stamp", we see that it's variable `S2201_C04_001` that we want. This is the percent households receiving food stamps.
+Now, do the same for income.   
+
+*Q5: Which variable give us the household income in the past 12 months?*
+
+```{r filter_snap}
+snap_inc <- snap %>% 
+  filter(variable %in% c("S2201_C04_001", "S2201_C01_034"))
+```
+
+I still think this data needs a little more tidying. The `tidyr` package allows us to *transform* a data frame from *long* format to *wide* with the `pivot_wider()` function.
+
+```{r tidy_stamp}
+snap_inc_wide <- snap_inc %>% 
+  #i don't think the moe (margin of error) and NAME variables are necessary
+  select(-moe, -NAME) %>% 
+  #also it would be more helpful in later steps if the variables were their own columns
+  pivot_wider(names_from = variable, values_from = estimate)
+
+#finally let's rename those pesky var names
+snap_inc_wide <- snap_inc_wide %>% 
+  rename(p_food_stamp = S2201_C04_001,
+         income = S2201_C01_034)
+```
+
+Let's plot what this relationship looks like
+```{r histo}
+#histograms are a good way of examining a distribution of a variable
+ggplot(data = snap_inc_wide) +
+  geom_histogram(mapping = aes(x = income))
+```
+
+*Q6: What can we see about the median household incomes in MDC? Why do you think R is warning us that some rows were removed? Do the same for percent on food stamps.*
+
+Let's examine some basic metrics, min and max.
+```{r}
+min(snap_inc_wide$income, na.rm = TRUE) #14,848
+max(snap_inc_wide$income, na.rm = TRUE) #250,001
+
+#what is the mean? what is the median? There is a good function for a summary of 
+## continuous variables :)
+
+summary(snap_inc_wide$income) 
+```
+
+One way we can visualize the spread of a continuos variable by a categorical is with boxplots. Each boxplot consists of:  
+- Inter Quartile Range (IQR) = A box that stretches from the 25th percentile of the distribution to the 75th  
+- Outliers = Visual points that display observations that fall more than 1.5 times the IQR  
+- Whiskers = A line that extends from each end of the box and goes to the
+farthest non-outlier point in the distribution
+
+To illustrate the utility of box plots we need a categorical variable. Let's create a variable called `poverty_level` based on the median income of a tract and federal guidelines. 
+
+The average American household consisted of 2.53 people in 2020. Thus, we will used 3 persons household for our [income threshold](https://www.payingforseniorcare.com/federal-poverty-level)
+```{r boxplots, message=FALSE, warning=FALSE}
+#let's create a new variable to see if what poverty level a census tract falls in based on federal guidelines
+
+snap_inc_pov <- snap_inc_wide %>% 
+  mutate(poverty_level = case_when(income <= 21720 ~ "poverty_1.00",
+                                   income > 21720 & income <= 28888 ~ "poverty_1.33",
+                                   income > 28888 & income <= 29974 ~ "poverty_1.38",
+                                   income > 29974 & income <= 32580 ~ "poverty_1.50",
+                                   income > 32580 & income <= 43440 ~ "poverty_2.00",
+                                   income > 43440 & income <= 54300 ~ "poverty_2.50",
+                                   income > 54300 & income <= 65160 ~ "poverty_3.00",
+                                   income > 65160 & income <= 86880 ~ "poverty_4.00",
+                                   income > 86880 ~ "poverty_4+"))
+
+ggplot(snap_inc_pov, aes(x = income, y = poverty_level)) + 
+   geom_boxplot() 
+```
+
+*Q6: What do you observe from this boxplot?*
+
+### Correlation Matrix
+
+Poverty level and income are clearly correlated. Let's visualize this!
+
+```{r }
+snap_cor <- mutate(snap_inc_wide, GEOID = as.numeric(GEOID)) %>%
+  #drop the 13 records with NA values
+  tidyr::drop_na() %>% 
+  cor(.)
+```
+
+```{r cor_plot}
+library(corrplot)
+
+corrplot(snap_cor)
+```
+
+*Q7: Does this justify the trends we saw earlier?*
+
+### 4. Analyze
+
+Now, let's do some analysis to see if there is a significant relationship between the proportion of those on food stamps and median household income
+
+```{r scatterplot, message=FALSE, warning=FALSE}
+ggplot(data = snap_inc_wide) +
+  aes(x = income, y = p_food_stamp) +
+  geom_point()
+
+```
+
+This clearly shows a negative relationship between income and proportion of residents on food stamps. However, the x-axis shows a strong tail, so let’s try to clean this up with a log transformation.
+
+```{r scatter_smooth, message=FALSE, warning=FALSE}
+ggplot(data = snap_inc_wide) +
+  aes(x = log10(income), y = p_food_stamp) +
+  geom_point(alpha = 0.3) +
+  geom_smooth(se = FALSE) +
+  labs(x = "Log(Houshold Income)",
+       y = "Percentage on Food Stamps") +
+  theme_minimal()
+
+```
+
+Now let's see if this relationship is statistically significant.
+
+```{r model}
+main_effect_fit <-  lm(p_food_stamp ~ income, data = snap_inc_wide) 
+
+summary(main_effect_fit)
+```
+*Q8: Our hypothesis was, those that live in tracts with lower median household incomes get more food stamps. Can we accept or reject this hypothesis?*
+
+### 5. Communicate
+
+This entire analysis was written in an R flavored version of Markdown called [R Markdown](https://rmarkdown.rstudio.com/). Using the `{knitr}` package, you could produce this analysis as an HTML, Word document or PDF. With a little cleaning up, you could easily present this as a report!!
+
+For some bonus points, let's visualize the distribution of those on food stamps geographically.
+One of the awesome things about the `{tidycensus}` package is that you can also pull the geographic attributes (lats/longs) so they can be used in conjunction with mapping tools!
+
+```{r get_map, message=FALSE, warning=FALSE, echo=TRUE, results=FALSE}
+snap_food <- get_acs(geography = "tract", 
+                     state = 12, 
+                     county = 86, 
+                     year = 2019,
+                     # we don't have to do the filtering as we did before!
+                     # we can ask for the variable we want explicitly now that we know!
+                     # we can also rename it in the API call!
+                     variables = c(p_food_stamp = "S2201_C04_001"), 
+                     geometry = TRUE)
+```
+
+```{r map}
+# remotes::install_github("r-spatial/mapview")
+library(mapview)
+
+snap_food %>% 
+  mapview::mapview(zcol = "estimate", legend = TRUE)
+```
+
